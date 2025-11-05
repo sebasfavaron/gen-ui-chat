@@ -3,13 +3,9 @@ import {
   Chat,
   GenerateContentResponse,
   Modality,
+  type GroundingChunk,
 } from '@google/genai';
-import type {
-  UiMode,
-  GenerativeUI,
-  ChatMessageForGemini,
-  GroundingChunk,
-} from '../types';
+import type { UiMode, GenerativeUI, ChatMessageForGemini } from '../types';
 // Fix: Import Dispatch and SetStateAction types from React to resolve namespace error.
 import type { Dispatch, SetStateAction } from 'react';
 
