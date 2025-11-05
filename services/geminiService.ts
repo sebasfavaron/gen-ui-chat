@@ -1,5 +1,5 @@
-import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
-import type { UiMode, GenerativeUI } from '../types';
+import { GoogleGenAI, Chat, GenerateContentResponse, Modality } from '@google/genai';
+import type { UiMode, GenerativeUI, ChatMessageForGemini, GroundingChunk } from '../types';
 // Fix: Import Dispatch and SetStateAction types from React to resolve namespace error.
 import type { Dispatch, SetStateAction } from 'react';
 
@@ -99,3 +99,151 @@ export const sendMessageToGemini = async (
     onStreamUpdate(textPart, uiPart);
   }
 };
+
+// ============================================================================
+// Google Capabilities - Ported from gen-ui-chat-2
+// These functions are available but not currently integrated into the UI
+// ============================================================================
+
+/**
+ * Generate text response using Gemini chat
+ */
+export const generateText = async (history: ChatMessageForGemini[], newMessage: string): Promise<string> => {
+    try {
+        const ai = getAi();
+        const chat = ai.chats.create({
+            model: 'gemini-2.5-flash',
+            history: history,
+        });
+        const response = await chat.sendMessage({ message: newMessage });
+        return response.text;
+    } catch (error) {
+        console.error("Error generating text:", error);
+        return "Sorry, I encountered an error. Please try again.";
+    }
+};
+
+/**
+ * Analyze an image using Gemini vision capabilities
+ */
+export const analyzeImage = async (base64Image: string, mimeType: string, prompt: string): Promise<string> => {
+    try {
+        const ai = getAi();
+        const imagePart = {
+            inlineData: {
+                mimeType: mimeType,
+                data: base64Image,
+            },
+        };
+        const textPart = { text: prompt };
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [imagePart, textPart] },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Error analyzing image:", error);
+        return "Sorry, I couldn't analyze the image. Please try again.";
+    }
+};
+
+/**
+ * Edit an image using Gemini image editing capabilities
+ */
+export const editImage = async (base64Image: string, mimeType: string, prompt: string): Promise<string | null> => {
+    try {
+        const ai = getAi();
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    { inlineData: { data: base64Image, mimeType: mimeType } },
+                    { text: prompt },
+                ],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+        
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return part.inlineData.data;
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error("Error editing image:", error);
+        return null;
+    }
+};
+
+/**
+ * Generate an image using Imagen
+ */
+export const generateImage = async (prompt: string): Promise<string | null> => {
+    try {
+        const ai = getAi();
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: prompt,
+            config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/jpeg',
+                aspectRatio: '1:1',
+            },
+        });
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            return response.generatedImages[0].image.imageBytes;
+        }
+        return null;
+    } catch (error) {
+        console.error("Error generating image:", error);
+        return null;
+    }
+};
+
+/**
+ * Internal function for grounding with Google Search or Maps
+ */
+const ground = async (prompt: string, tool: 'googleSearch' | 'googleMaps', location?: { latitude: number, longitude: number }): Promise<{text: string, sources: GroundingChunk[]}> => {
+    try {
+        const ai = getAi();
+        const config: any = { tools: [{ [tool]: {} }] };
+        if (tool === 'googleMaps' && location) {
+            config.toolConfig = {
+                retrievalConfig: {
+                    latLng: {
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                    }
+                }
+            }
+        }
+
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: config,
+        });
+
+        const text = response.text;
+        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        
+        return { text, sources };
+
+    } catch (error) {
+        console.error(`Error with ${tool} grounding:`, error);
+        return { text: `Sorry, I encountered an error with ${tool}.`, sources: [] };
+    }
+}
+
+/**
+ * Generate content with Google Search grounding
+ */
+export const generateWithSearch = (prompt: string) => ground(prompt, 'googleSearch');
+
+/**
+ * Generate content with Google Maps grounding
+ */
+export const generateWithMaps = (prompt: string, location: { latitude: number, longitude: number }) => ground(prompt, 'googleMaps', location);
