@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatWindow } from './components/ChatWindow';
 import { ChatInput } from './components/ChatInput';
@@ -20,7 +19,8 @@ const App: React.FC = () => {
       {
         id: 'init',
         role: 'model',
-        textPart: 'Hello! How can I help you today? Try asking me to create a UI component, like "show me a user profile card".',
+        textPart:
+          'Hello! How can I help you today? Try asking me to create a UI component, like "show me a user profile card".',
         uiPart: null,
       },
     ]);
@@ -38,11 +38,11 @@ const App: React.FC = () => {
       textPart: prompt,
       uiPart: null,
     };
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
 
     const botMessageId = (Date.now() + 1).toString();
     // Add a placeholder for the bot's response
-    setMessages(prev => [
+    setMessages((prev) => [
       ...prev,
       { id: botMessageId, role: 'model', textPart: '', uiPart: null },
     ]);
@@ -53,22 +53,23 @@ const App: React.FC = () => {
         chat,
         setChat,
         uiMode,
-        (text, ui) => {
-          setMessages(prev =>
-            prev.map(msg =>
+        (text, ui, sources) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
               msg.id === botMessageId
-                ? { ...msg, textPart: text, uiPart: ui }
+                ? { ...msg, textPart: text, uiPart: ui, sources }
                 : msg
             )
           );
         }
       );
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      const errorMessage =
+        e instanceof Error ? e.message : 'An unknown error occurred.';
       console.error(e);
       setError(errorMessage);
-      setMessages(prev =>
-        prev.map(msg =>
+      setMessages((prev) =>
+        prev.map((msg) =>
           msg.id === botMessageId
             ? { ...msg, textPart: `Error: ${errorMessage}`, isError: true }
             : msg
@@ -80,11 +81,13 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900 text-gray-100 font-sans">
+    <div className='flex flex-col h-screen bg-gray-900 text-gray-100 font-sans'>
       <Header />
       <ModeToggle uiMode={uiMode} setUiMode={setUiMode} />
       <ChatWindow messages={messages} isLoading={isLoading} />
-      {error && <div className="text-center text-red-400 px-4 py-2">{error}</div>}
+      {error && (
+        <div className='text-center text-red-400 px-4 py-2'>{error}</div>
+      )}
       <ChatInput onSend={handleSend} isLoading={isLoading} />
     </div>
   );

@@ -1,3 +1,10 @@
+import type { GroundingChunk } from '@google/genai';
+
+/**
+ * Grounding chunk from Google Search or Maps results
+ * Re-exported from @google/genai for convenience
+ */
+export type { GroundingChunk } from '@google/genai';
 
 export interface GenerativeUI {
   type: string;
@@ -11,6 +18,7 @@ export interface ChatMessage {
   textPart: string;
   uiPart: GenerativeUI | null;
   isError?: boolean;
+  sources?: GroundingChunk[];
 }
 
 export type UiMode = 'generative-ui' | 'text-only';
@@ -26,25 +34,4 @@ export type UiMode = 'generative-ui' | 'text-only';
 export interface ChatMessageForGemini {
   role: 'user' | 'model';
   parts: { text: string }[];
-}
-
-/**
- * Grounding chunk from Google Search or Maps results
- */
-export interface GroundingChunk {
-  web?: {
-    uri: string;
-    title: string;
-  };
-  maps?: {
-    uri: string;
-    title: string;
-    placeAnswerSources?: {
-      reviewSnippets?: {
-        uri: string;
-        text: string;
-        author: string;
-      }[];
-    };
-  };
 }
