@@ -1,5 +1,15 @@
-import { GoogleGenAI, Chat, GenerateContentResponse, Modality } from '@google/genai';
-import type { UiMode, GenerativeUI, ChatMessageForGemini, GroundingChunk } from '../types';
+import {
+  GoogleGenAI,
+  Chat,
+  GenerateContentResponse,
+  Modality,
+} from '@google/genai';
+import type {
+  UiMode,
+  GenerativeUI,
+  ChatMessageForGemini,
+  GroundingChunk,
+} from '../types';
 // Fix: Import Dispatch and SetStateAction types from React to resolve namespace error.
 import type { Dispatch, SetStateAction } from 'react';
 
@@ -7,14 +17,14 @@ let ai: GoogleGenAI | null = null;
 const API_KEY = process.env.API_KEY;
 
 const getAi = () => {
-    if (!ai) {
-        if (!API_KEY) {
-            throw new Error("API_KEY environment variable not set.");
-        }
-        ai = new GoogleGenAI({ apiKey: API_KEY });
+  if (!ai) {
+    if (!API_KEY) {
+      throw new Error('API_KEY environment variable not set.');
     }
-    return ai;
-}
+    ai = new GoogleGenAI({ apiKey: API_KEY });
+  }
+  return ai;
+};
 
 const HTML_GENERATION_PROMPT_EXTENSION = `
 ---
@@ -52,7 +62,10 @@ Example for a user profile query:
 ---
 `;
 
-function parseGeminiResponse(responseText: string): { textPart: string; uiPart: GenerativeUI | null } {
+function parseGeminiResponse(responseText: string): {
+  textPart: string;
+  uiPart: GenerativeUI | null;
+} {
   const htmlRegex = /```html\s*([\s\S]*?)\s*```/;
   const match = responseText.match(htmlRegex);
 
@@ -68,13 +81,16 @@ function parseGeminiResponse(responseText: string): { textPart: string; uiPart: 
   return { textPart: cleanedText, uiPart: null };
 }
 
-
 export const sendMessageToGemini = async (
   prompt: string,
   chat: Chat | null,
   setChat: Dispatch<SetStateAction<Chat | null>>,
   uiMode: UiMode,
-  onStreamUpdate: (text: string, ui: GenerativeUI | null) => void
+  onStreamUpdate: (
+    text: string,
+    ui: GenerativeUI | null,
+    sources?: GroundingChunk[]
+  ) => void
 ): Promise<void> => {
   const googleAi = getAi();
   let currentChat = chat;
@@ -86,17 +102,39 @@ export const sendMessageToGemini = async (
     setChat(currentChat);
   }
 
-  const fullPrompt = uiMode === 'generative-ui'
-    ? `${prompt}\n${HTML_GENERATION_PROMPT_EXTENSION}`
-    : prompt;
+  let searchResults: { text: string; sources: GroundingChunk[] } | null = null;
+
+  // If in generative-ui mode, perform search first to get up-to-date data
+  if (uiMode === 'generative-ui') {
+    try {
+      searchResults = await generateWithSearch(prompt);
+    } catch (error) {
+      console.error('Error performing search:', error);
+      // Continue without search results if search fails
+    }
+  }
+
+  // Build the prompt with search results if available
+  let fullPrompt: string;
+  if (uiMode === 'generative-ui') {
+    if (searchResults && searchResults.text) {
+      // Enhance the prompt with search results
+      fullPrompt = `Based on the following up-to-date information:\n\n${searchResults.text}\n\nNow create an HTML component for the user's request: ${prompt}\n${HTML_GENERATION_PROMPT_EXTENSION}`;
+    } else {
+      fullPrompt = `${prompt}\n${HTML_GENERATION_PROMPT_EXTENSION}`;
+    }
+  } else {
+    fullPrompt = prompt;
+  }
 
   const stream = await currentChat.sendMessageStream({ message: fullPrompt });
 
-  let accumulatedText = "";
+  let accumulatedText = '';
   for await (const chunk of stream) {
     accumulatedText += chunk.text;
     const { textPart, uiPart } = parseGeminiResponse(accumulatedText);
-    onStreamUpdate(textPart, uiPart);
+    // Pass sources along with the update
+    onStreamUpdate(textPart, uiPart, searchResults?.sources);
   }
 };
 
@@ -108,142 +146,161 @@ export const sendMessageToGemini = async (
 /**
  * Generate text response using Gemini chat
  */
-export const generateText = async (history: ChatMessageForGemini[], newMessage: string): Promise<string> => {
-    try {
-        const ai = getAi();
-        const chat = ai.chats.create({
-            model: 'gemini-2.5-flash',
-            history: history,
-        });
-        const response = await chat.sendMessage({ message: newMessage });
-        return response.text;
-    } catch (error) {
-        console.error("Error generating text:", error);
-        return "Sorry, I encountered an error. Please try again.";
-    }
+export const generateText = async (
+  history: ChatMessageForGemini[],
+  newMessage: string
+): Promise<string> => {
+  try {
+    const ai = getAi();
+    const chat = ai.chats.create({
+      model: 'gemini-2.5-flash',
+      history: history,
+    });
+    const response = await chat.sendMessage({ message: newMessage });
+    return response.text;
+  } catch (error) {
+    console.error('Error generating text:', error);
+    return 'Sorry, I encountered an error. Please try again.';
+  }
 };
 
 /**
  * Analyze an image using Gemini vision capabilities
  */
-export const analyzeImage = async (base64Image: string, mimeType: string, prompt: string): Promise<string> => {
-    try {
-        const ai = getAi();
-        const imagePart = {
-            inlineData: {
-                mimeType: mimeType,
-                data: base64Image,
-            },
-        };
-        const textPart = { text: prompt };
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [imagePart, textPart] },
-        });
-        return response.text;
-    } catch (error) {
-        console.error("Error analyzing image:", error);
-        return "Sorry, I couldn't analyze the image. Please try again.";
-    }
+export const analyzeImage = async (
+  base64Image: string,
+  mimeType: string,
+  prompt: string
+): Promise<string> => {
+  try {
+    const ai = getAi();
+    const imagePart = {
+      inlineData: {
+        mimeType: mimeType,
+        data: base64Image,
+      },
+    };
+    const textPart = { text: prompt };
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts: [imagePart, textPart] },
+    });
+    return response.text;
+  } catch (error) {
+    console.error('Error analyzing image:', error);
+    return "Sorry, I couldn't analyze the image. Please try again.";
+  }
 };
 
 /**
  * Edit an image using Gemini image editing capabilities
  */
-export const editImage = async (base64Image: string, mimeType: string, prompt: string): Promise<string | null> => {
-    try {
-        const ai = getAi();
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: {
-                parts: [
-                    { inlineData: { data: base64Image, mimeType: mimeType } },
-                    { text: prompt },
-                ],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
-        });
-        
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                return part.inlineData.data;
-            }
-        }
-        return null;
-    } catch (error) {
-        console.error("Error editing image:", error);
-        return null;
+export const editImage = async (
+  base64Image: string,
+  mimeType: string,
+  prompt: string
+): Promise<string | null> => {
+  try {
+    const ai = getAi();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          { inlineData: { data: base64Image, mimeType: mimeType } },
+          { text: prompt },
+        ],
+      },
+      config: {
+        responseModalities: [Modality.IMAGE],
+      },
+    });
+
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return part.inlineData.data;
+      }
     }
+    return null;
+  } catch (error) {
+    console.error('Error editing image:', error);
+    return null;
+  }
 };
 
 /**
  * Generate an image using Imagen
  */
 export const generateImage = async (prompt: string): Promise<string | null> => {
-    try {
-        const ai = getAi();
-        const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: prompt,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/jpeg',
-                aspectRatio: '1:1',
-            },
-        });
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            return response.generatedImages[0].image.imageBytes;
-        }
-        return null;
-    } catch (error) {
-        console.error("Error generating image:", error);
-        return null;
+  try {
+    const ai = getAi();
+    const response = await ai.models.generateImages({
+      model: 'imagen-4.0-generate-001',
+      prompt: prompt,
+      config: {
+        numberOfImages: 1,
+        outputMimeType: 'image/jpeg',
+        aspectRatio: '1:1',
+      },
+    });
+    if (response.generatedImages && response.generatedImages.length > 0) {
+      return response.generatedImages[0].image.imageBytes;
     }
+    return null;
+  } catch (error) {
+    console.error('Error generating image:', error);
+    return null;
+  }
 };
 
 /**
  * Internal function for grounding with Google Search or Maps
  */
-const ground = async (prompt: string, tool: 'googleSearch' | 'googleMaps', location?: { latitude: number, longitude: number }): Promise<{text: string, sources: GroundingChunk[]}> => {
-    try {
-        const ai = getAi();
-        const config: any = { tools: [{ [tool]: {} }] };
-        if (tool === 'googleMaps' && location) {
-            config.toolConfig = {
-                retrievalConfig: {
-                    latLng: {
-                        latitude: location.latitude,
-                        longitude: location.longitude,
-                    }
-                }
-            }
-        }
-
-        const response: GenerateContentResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: config,
-        });
-
-        const text = response.text;
-        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        
-        return { text, sources };
-
-    } catch (error) {
-        console.error(`Error with ${tool} grounding:`, error);
-        return { text: `Sorry, I encountered an error with ${tool}.`, sources: [] };
+const ground = async (
+  prompt: string,
+  tool: 'googleSearch' | 'googleMaps',
+  location?: { latitude: number; longitude: number }
+): Promise<{ text: string; sources: GroundingChunk[] }> => {
+  try {
+    const ai = getAi();
+    const config: any = { tools: [{ [tool]: {} }] };
+    if (tool === 'googleMaps' && location) {
+      config.toolConfig = {
+        retrievalConfig: {
+          latLng: {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          },
+        },
+      };
     }
-}
+
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: config,
+    });
+
+    const text = response.text;
+    const sources =
+      response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
+    return { text, sources };
+  } catch (error) {
+    console.error(`Error with ${tool} grounding:`, error);
+    return { text: `Sorry, I encountered an error with ${tool}.`, sources: [] };
+  }
+};
 
 /**
  * Generate content with Google Search grounding
  */
-export const generateWithSearch = (prompt: string) => ground(prompt, 'googleSearch');
+export const generateWithSearch = (prompt: string) =>
+  ground(prompt, 'googleSearch');
 
 /**
  * Generate content with Google Maps grounding
  */
-export const generateWithMaps = (prompt: string, location: { latitude: number, longitude: number }) => ground(prompt, 'googleMaps', location);
+export const generateWithMaps = (
+  prompt: string,
+  location: { latitude: number; longitude: number }
+) => ground(prompt, 'googleMaps', location);
