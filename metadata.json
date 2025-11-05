@@ -1,0 +1,5 @@
+{
+  "name": "Generative UI Chatbot",
+  "description": "An experimental LLM-based chat application that dynamically generates and renders UI components in real-time based on the conversation, using Gemini.",
+  "requestFramePermissions": []
+}
