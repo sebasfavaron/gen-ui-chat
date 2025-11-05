@@ -45,6 +45,6 @@ export interface GroundingChunk {
         text: string;
         author: string;
       }[];
-    }
-  }
+    };
+  };
 }
